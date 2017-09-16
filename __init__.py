@@ -22,7 +22,7 @@
 # <pep8 compliant>
 
 bl_info = {
-	"name": "HDRI-lighting-Shortcut",
+	"name": "Vray HDRI-lighting-Shortcut",
 	"author": "Nicolas Priniotakis (Nikos), fixed for Vray: JuhaW",
 	"version": (1, 3, 2, 2),
 	"blender": (2, 7, 8, 0),
@@ -264,15 +264,18 @@ def update_hue(self, context):
 	except:
 		pass
 
-
+def update_hemi_light_strength(self, context):
+	o = hemi_lamp_find()
+	o.data.vray.LightDome.intensity = self.hemi_light_strength
+	
 def update_strength(self, context):
 	try:
-		node_math_add.inputs[1].default_value = self.light_strength/50
+		node_math_add.inputs[1].default_value = self.light_strength
 		if not bpy.context.scene.adjustments_prop:
 			node_rflx_math_add.inputs[1].default_value = self.light_strength
 			self.reflexion = self.light_strength
-		o = hemi_lamp_find()
-		o.data.vray.LightDome.intensity = self.light_strength
+		#o = hemi_lamp_find()
+		#o.data.vray.LightDome.intensity = self.light_strength
 	except:
 		pass
 
@@ -340,7 +343,9 @@ def reset():
 	self.hue = 0.5
 	self.reflexion = 0.5
 	self.mirror = False
-
+	
+	self.hemi_light_strength = 1.0
+	
 
 # -------------------------------------------------------------
 # Take UI's values from nodes' values
@@ -610,6 +615,7 @@ def update_blur(self, context):
 ### CUSTOM PROPS ----------------------------------------------------
 bpy.types.Scene.orientation = bpy.props.FloatProperty(name="Orientation", update=update_orientation, max=360, min=-360, default=0, unit='ROTATION')
 bpy.types.Scene.light_strength = bpy.props.FloatProperty(name="Ambient", update=update_strength, default=1.0, precision=3)
+bpy.types.Scene.hemi_light_strength = bpy.props.FloatProperty(name="Hemi", update=update_hemi_light_strength, default=1.0, precision=3)
 bpy.types.Scene.main_light_strength = bpy.props.FloatProperty(name="Main", update=update_main_strength, default=0.5, precision=3)
 bpy.types.Scene.filepath = bpy.props.StringProperty(subtype='FILE_PATH')
 bpy.types.Scene.visible = bpy.props.BoolProperty(update=update_visible, name="Visible", description="Switch on/off the visibility of the background", default=True)
@@ -654,18 +660,25 @@ class hdri_map(bpy.types.Panel):
 			else:
 				row.operator("visible.img", icon="RESTRICT_VIEW_ON")
 			row.operator("remove.setup", icon="X")
-			row = layout.row()
-			#box = layout.box()
-			#row = box.row()
-			#row.label("Light sources")
-			#row = box.row()
-			row.prop(scene, "light_strength", text = 'Intensity')
+
+			row = layout.row(align=True)
+
+			row.label("", icon = 'LAMP_HEMI')
+			row.prop(scene, "hemi_light_strength", text = 'Hemi')
+			
+			row.label("", icon = 'IMAGE_COL')
+			row.prop(scene, "light_strength", text = 'Image')
+
 			#row.prop(scene, "main_light_strength")
 			#row = box.row()
+			
+			row = layout.row(align = True)
+			row.label("", icon = 'OUTLINER_DATA_META')
 			row.prop(scene, "orientation")
 			#row = box.row()
 			#row.prop(scene, "adjustments_prop")
-			row = layout.row()
+			#row = layout.row()
+			#row.label(" ")
 			row.prop(scene, "mirror")
 
 			if adjustments:
