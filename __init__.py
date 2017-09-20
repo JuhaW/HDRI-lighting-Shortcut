@@ -200,7 +200,12 @@ def update_orientation(self, context):
 		ori = 180-ori
 	
 	bpy.context.scene.objects['Hemi'].rotation_euler[2] = radians(ori)
-	print (ori)
+	#print (ori)
+	#set sun constraint offset
+	#set sun offset only if sun & Hdri are synced
+	if context.scene.vray_sun_synced:
+		sun_offset()
+		
 	"""	
 	except:
 		print ("pass orientation")
@@ -208,6 +213,232 @@ def update_orientation(self, context):
 	"""
 
 #############################################################################
+class Vray():
+
+	sun_orientation_x = 0
+	sun_orientation_z = 0
+	#sun constraint follow path
+	sun_constraint = 0
+	sun_synced = False
+	offset = 0
+	hdri_orientation = 0
+	sun_button_setmode = False
+	
+	#value 0-1
+	uvcursor_x = 0
+	uvcursor_y = 0
+	
+	area = None
+	area_image = None
+	
+class OBJECT_OT_sun_set_cursor(bpy.types.Operator):
+	bl_label = "sun set cursor"
+	bl_idname = "sun_set_cursor.execute"
+	bl_description = "Sun is shining and moon is rising"
+	#bl_options = {'REGISTER'}
+	
+	
+	def modal(self, context, event):
+		if event.type == 'MOUSEMOVE':
+			pass
+		elif event.type == 'LEFTMOUSE':
+			# we could handle PRESS and RELEASE individually if necessary
+			pass
+
+		elif event.type in {'RIGHTMOUSE', 'ESC'}:
+			
+			return {'CANCELLED'}
+
+		return {'RUNNING_MODAL'}
+
+	def invoke(self, context, event):
+		
+		
+		Vray.sun_button_setmode = not Vray.sun_button_setmode
+		if Vray.sun_button_setmode:
+			#print ("Vray.sun_button_setmode:", Vray.sun_button_setmode)
+			
+			#set background image from image node
+			for area in bpy.context.screen.areas:
+				if area.type == 'VIEW_3D':
+					space_data = area.spaces.active
+					Vray.area = area
+					Vray.spaces = area.spaces.active
+					#bpy.context.window.cursor_set("EYEDROPPER")
+					
+					#image node
+					image_node = hemi_lamp_imagenode_find()
+					if image_node:
+							
+						area.type= 'IMAGE_EDITOR'
+						Vray.area_image = area
+						area.spaces.active.image = image_node.texture.image
+						area.spaces.active.mode = 'MASK'
+						mask = bpy.data.masks.get("Set sun position", None)
+						if not mask:
+							mask = bpy.data.masks.new("Set sun position")
+						area.spaces.active.mask = mask
+					
+					for region in area.regions:
+						if region.type == 'WINDOW':
+							override = {'area': area, 'region': region}
+							bpy.ops.image.view_all(override, fit_view=True)
+					
+					
+			#context.window_manager.modal_handler_add(self)
+		else:
+			#sun position is set, now calculate sun rotation
+			#restore VIEW_3D area
+			
+			Vray.uvcursor_x = Vray.area_image.spaces.active.cursor_location.x / Vray.area_image.spaces.active.image.size[0]
+			Vray.uvcursor_y = Vray.area_image.spaces.active.cursor_location.y / Vray.area_image.spaces.active.image.size[1]
+			
+			#print ("uvcursor x:", Vray.uvcursor_x)
+			#print ("uvcursor y:", Vray.uvcursor_y)
+			
+			Vray.area.type = 'VIEW_3D'
+			sun()
+			context.scene.vray_sun_synced = True
+			Vray.sun_synced = True
+			
+		return {'RUNNING_MODAL'}
+		"""
+		else:
+			self.report({'WARNING'}, "No active object, could not finish")
+			return {'CANCELLED'}
+		"""
+			
+	def execute(self, context):
+		
+		
+		
+		
+		
+		return {'FINISHED'}
+	
+class OBJECT_OT_sun(bpy.types.Operator):
+	bl_label = "sun"
+	bl_idname = "sun.execute"
+	bl_description = "Sun is shining and moon is rising"
+	#bl_options = {'REGISTER'}
+
+	
+	def execute(self, context):
+		
+		#print ("context:",context.area.type)
+		sun()
+		#print ("Vray:", Vray.hdri_orientation)
+		#Vray.hdri_orientation += 1
+		
+		return {'FINISHED'}
+
+
+def sun():
+
+	global img_path
+	
+	#x
+	curx = Vray.uvcursor_x
+	posx = curx-0.25
+	
+	#z
+	curz = Vray.uvcursor_y
+	posz = curz
+
+	#print ("posx:", posx)
+	#print (posz)
+	
+	Vray.sun_orientation_z = -posx/(1/360)#-orientation
+	Vray.sun_orientation_x = posz/(1/180)
+	#print ("anglez:", Vray.sun_orientation_z)
+	#print ("anglex:", Vray.sun_orientation_x)
+	#create circle bezier curve for sun
+	curve = bpy.data.objects.get('Sun path', None)
+	if not curve:
+		curve_create('CURVE', 'Sun path', (0,0,0))
+	
+	sun = bpy.data.objects.get('Sun', None)
+	if not sun:
+		sun = lamp_create('SUN', 'Sun', (0,0,4))
+		sun.data.vray.direct_type = 'SUN'
+	
+	sun.rotation_euler.x = radians(Vray.sun_orientation_x)
+	sun.scale.z = -1
+	
+	if 'Sun path' in sun.constraints:
+		c = sun.constraints['Sun path']
+	else:
+		c = sun.constraints.new('FOLLOW_PATH')
+		c.name = "Sun path"
+	#store sun constraint
+	Vray.sun_constraint = c
+	
+	c.forward_axis = 'FORWARD_X'
+	c.up_axis = 'UP_Z'
+	c.use_fixed_location = True
+	c.use_curve_follow = True
+	c.target = bpy.data.objects["Sun path"]
+
+	sun_offset()
+	
+def sun_offset():
+	
+	sun_z= Vray.sun_orientation_z - degrees(bpy.context.scene.orientation)
+	if sun_z >180:
+		Vray.offset = 2-(sun_z/360+.5)
+	elif sun_z >=-180:
+		Vray.offset = 1-(sun_z/360+.5)
+		#<180
+	else:
+		#print ("degree smaller than -180:")
+		Vray.offset = 0-(sun_z/360+.5)
+	
+	#print ("sun_z:",sun_z)
+	c = Vray.sun_constraint
+	c.offset_factor = Vray.offset
+	#print ("offset:",Vray.offset)
+
+
+def lamp_create(type, name, coordinates):
+	
+	od = bpy.data.lamps.new(name, type)
+	o = bpy.data.objects.new(name, od)
+	o.location =  coordinates
+	bpy.context.scene.objects.link(o)	
+	return o
+
+def curve_create(type, name, coordinates):
+	
+	# sample data
+	coords = [(-5,0,0), (0,5,0), (5,0,0),(0,-5,0)]
+
+	# create the Curve Datablock
+	od = bpy.data.curves.new(name, type=type)
+	#curveData.dimensions = '3D'
+	od.resolution_u = 32
+	od.fill_mode = 'NONE'
+	
+	# map coords to spline
+	polyline = od.splines.new('BEZIER')
+	polyline.use_cyclic_u = True
+	polyline.bezier_points.add(len(coords)-1)
+	for i, coord in enumerate(coords):
+		polyline.bezier_points[i].co = coord
+		polyline.bezier_points[i].handle_right_type = 'AUTO'
+		polyline.bezier_points[i].handle_left_type = 'AUTO'
+
+	# create Object
+	o = bpy.data.objects.new(name, od)
+	o.hide = True
+	o.hide_render = True
+
+
+	o.location =  coordinates
+	bpy.context.scene.objects.link(o)
+	
+	return o
+
+
 #check if hemi lamp exist
 def hemi_lamp_find():
 	
@@ -215,10 +446,8 @@ def hemi_lamp_find():
 		if o.type =='LAMP' and o.data.type =='HEMI':
 			return o
 	#not find hemi lamp, create new
-	od = bpy.data.lamps.new('Hemi', 'HEMI')
-	o = bpy.data.objects.new('Hemi', od)
-	o.location =  (0,0,5)
-	bpy.context.scene.objects.link(o)	
+	o = lamp_create('HEMI', 'Hemi', (0,0,5))
+	
 	return o
 	
  
@@ -264,6 +493,9 @@ def update_hue(self, context):
 	except:
 		pass
 
+def update_vray_sun_synced(self, context):
+	pass
+	
 def update_hemi_light_strength(self, context):
 	o = hemi_lamp_find()
 	o.data.vray.LightDome.intensity = self.hemi_light_strength
@@ -345,6 +577,7 @@ def reset():
 	self.mirror = False
 	
 	self.hemi_light_strength = 1.0
+	self.vray_sun_synced = False
 	
 
 # -------------------------------------------------------------
@@ -363,6 +596,8 @@ def apply_parameters():
 	check_visible()
 	node_map.rotation[2] = scene.orientation
 	scene.orientation = scene.orientation
+	scene.vray_sun_synced = False
+	Vray.sun_synced = False
 	#world background
 	[i for i in bpy.context.screen.areas if i.type == 'VIEW_3D'][0].spaces[0].show_world = True
 	
@@ -613,9 +848,10 @@ def update_blur(self, context):
 
 
 ### CUSTOM PROPS ----------------------------------------------------
-bpy.types.Scene.orientation = bpy.props.FloatProperty(name="Orientation", update=update_orientation, max=360, min=-360, default=0, unit='ROTATION')
+bpy.types.Scene.orientation = bpy.props.FloatProperty(name="Orientation", update=update_orientation, max= radians(720), min= radians(-720), default=0, unit='ROTATION', step = degrees(0.017453292519943295*100))
 bpy.types.Scene.light_strength = bpy.props.FloatProperty(name="Ambient", update=update_strength, default=1.0, precision=3)
 bpy.types.Scene.hemi_light_strength = bpy.props.FloatProperty(name="Hemi", update=update_hemi_light_strength, default=1.0, precision=3)
+bpy.types.Scene.vray_sun_synced = bpy.props.BoolProperty(name="Sync Sun & Hdri", update=update_vray_sun_synced, default = False)
 bpy.types.Scene.main_light_strength = bpy.props.FloatProperty(name="Main", update=update_main_strength, default=0.5, precision=3)
 bpy.types.Scene.filepath = bpy.props.StringProperty(subtype='FILE_PATH')
 bpy.types.Scene.visible = bpy.props.BoolProperty(update=update_visible, name="Visible", description="Switch on/off the visibility of the background", default=True)
@@ -636,6 +872,7 @@ class hdri_map(bpy.types.Panel):
 	bl_region_type = 'WINDOW'
 	bl_context = "world"
 
+	
 	def draw(self, context):
 		global adjustments, img_path
 		try:
@@ -680,7 +917,17 @@ class hdri_map(bpy.types.Panel):
 			#row = layout.row()
 			#row.label(" ")
 			row.prop(scene, "mirror")
-
+			row = layout.row(align = True)
+			row.label("", icon = 'EYEDROPPER')
+			row.alert = True if Vray.sun_button_setmode else False
+			row.operator("sun_set_cursor.execute", text = "Point sun position" if not Vray.sun_button_setmode else 
+			"Sync sun to Hdri" )
+			#print ("setmode:", Vray.sun_button_setmode)
+			col = row.column()
+			col.prop(scene, "vray_sun_synced")
+			col.enabled = Vray.sun_synced
+			#row.operator("sun.execute")
+			
 			if adjustments:
 				row = box.row()
 				row.prop(scene, "sat")
@@ -703,6 +950,8 @@ class OBJECT_OT_load_img(bpy.types.Operator):
 	files = bpy.props.CollectionProperty(name="File Path", type=bpy.types.OperatorFileListElement,)
 
 	def execute(self, context):
+		context.scene.vray_sun_synced = False
+		
 		global img_path
 		img_path = self.properties.filepath
 		setup(img_path)
