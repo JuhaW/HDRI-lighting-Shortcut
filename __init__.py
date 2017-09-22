@@ -212,6 +212,14 @@ def update_orientation(self, context):
 		pass
 	"""
 
+def update_vray_hdri_viewport(self, context):
+	
+	for area in bpy.context.screen.areas:
+		if area.type == 'VIEW_3D':
+			space_data = area.spaces.active
+			space_data.show_world = self.vray_hdri_viewport
+			
+	
 #############################################################################
 class Vray():
 
@@ -852,6 +860,9 @@ bpy.types.Scene.orientation = bpy.props.FloatProperty(name="Orientation", update
 bpy.types.Scene.light_strength = bpy.props.FloatProperty(name="Ambient", update=update_strength, default=1.0, precision=3)
 bpy.types.Scene.hemi_light_strength = bpy.props.FloatProperty(name="Hemi", update=update_hemi_light_strength, default=1.0, precision=3)
 bpy.types.Scene.vray_sun_synced = bpy.props.BoolProperty(name="Sync Sun & Hdri", update=update_vray_sun_synced, default = False)
+bpy.types.Scene.vray_hdri_viewport = bpy.props.BoolProperty(name="Hdri viewport", update=update_vray_hdri_viewport, default = True)
+
+
 bpy.types.Scene.main_light_strength = bpy.props.FloatProperty(name="Main", update=update_main_strength, default=0.5, precision=3)
 bpy.types.Scene.filepath = bpy.props.StringProperty(subtype='FILE_PATH')
 bpy.types.Scene.visible = bpy.props.BoolProperty(update=update_visible, name="Visible", description="Switch on/off the visibility of the background", default=True)
@@ -892,12 +903,14 @@ class hdri_map(bpy.types.Panel):
 				row.operator("nodes.img", icon="WORLD", text=os.path.basename(img))
 			else:
 				row.operator("nodes.img", icon="WORLD")
-			if scene.visible:
-				row.operator("visible.img", icon="RESTRICT_VIEW_OFF")
-			else:
-				row.operator("visible.img", icon="RESTRICT_VIEW_ON")
+			
+			row.prop(scene, "vray_hdri_viewport", text = "", icon = 'RESTRICT_VIEW_OFF' if scene.visible else 'RESTRICT_VIEW_OFF')
+			row.operator("visible.img", icon="RESTRICT_RENDER_OFF" if scene.visible else "RESTRICT_RENDER_ON")
+			
 			row.operator("remove.setup", icon="X")
-
+			
+			#RESTRICT_RENDER_OFF
+			
 			row = layout.row(align=True)
 
 			row.label("", icon = 'LAMP_HEMI')
@@ -927,6 +940,7 @@ class hdri_map(bpy.types.Panel):
 			col.prop(scene, "vray_sun_synced")
 			col.enabled = Vray.sun_synced
 			#row.operator("sun.execute")
+			row = layout.row(align = True)
 			
 			if adjustments:
 				row = box.row()
