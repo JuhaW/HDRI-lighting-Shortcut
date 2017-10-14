@@ -219,7 +219,14 @@ def update_vray_hdri_viewport(self, context):
 			space_data = area.spaces.active
 			space_data.show_world = self.vray_hdri_viewport
 			
+
+
+def update_vray_hdri_gamma(self, context):
 	
+	
+	node_gamma.inputs[1].default_value = self.vray_hdri_gamma
+	
+				
 #############################################################################
 class Vray():
 
@@ -586,6 +593,7 @@ def reset():
 	
 	self.hemi_light_strength = 1.0
 	self.vray_sun_synced = False
+	self.vray_hdri_gamma = 1.0
 	
 
 # -------------------------------------------------------------
@@ -606,6 +614,7 @@ def apply_parameters():
 	scene.orientation = scene.orientation
 	scene.vray_sun_synced = False
 	Vray.sun_synced = False
+	scene.vray_hdri_gamma = 1.0
 	#world background
 	[i for i in bpy.context.screen.areas if i.type == 'VIEW_3D'][0].spaces[0].show_world = True
 	
@@ -670,6 +679,7 @@ def setup(img_path):
 	global node_math_add, node_bkgnd, node_out, node_light_path, node_reflexion
 	global node_rflx_math, node_rflx_math_add, node_blur_noise, node_blur_coordinate
 	global node_blur_mix_1, node_blur_mix_2, node_blur_math_sub, node_blur_math_add
+	global node_gamma
 	#bpy.context.area.type = 'NODE_EDITOR'
 	#bpy.context.scene.render.engine = 'CYCLES'
 	#bpy.context.space_data.tree_type = 'ShaderNodeTree'
@@ -708,6 +718,11 @@ def setup(img_path):
 	hemi_lamp_nodetree_create(hemi_lamp, img)	  
 	#Vray end
 	
+	#add gamma node
+	node_gamma = nodes.new('ShaderNodeGamma')
+	node_coo.location = 400, -100
+	node_coo.name = 'Gamma'
+	#------------------------------------------------------	
 	node_coo = nodes.new('ShaderNodeTexCoord')
 	node_coo.location = -400, 0
 	node_coo.name = 'COORDINATE'
@@ -819,14 +834,18 @@ def setup(img_path):
 	link3 = links.new(node_env.outputs[0], node_sat.inputs[4])
 	link4 = links.new(node_sat.outputs[0], node_add.inputs[2])
 	link5 = links.new(node_add.outputs[0], node_reflexion.inputs[0])
-	link6 = links.new(node_add.outputs[0], node_bkgnd.inputs[0])
+	link6 = links.new(node_gamma.outputs[0], node_bkgnd.inputs[0])
+	#link6 = links.new(node_add.outputs[0], node_bkgnd.inputs[0])
 	link7 = links.new(node_light_path.outputs[5], node_ref_mix.inputs[0])
 	link8 = links.new(node_env.outputs[0], node_rflx_math.inputs[0])
 	link9 = links.new(node_rflx_math.outputs[0], node_rflx_math_add.inputs[0])
 	link10 = links.new(node_rflx_math_add.outputs[0], node_reflexion.inputs[1])
-	link11 = links.new(node_env.outputs[0], node_math.inputs[0])
+	
+	#link environment node to gamma node
+	link11 = links.new(node_env.outputs[0], node_gamma.inputs[0])
+	
 	link12 = links.new(node_math.outputs[0], node_math_add.inputs[0])
-	link13 = links.new(node_math_add.outputs[0], node_bkgnd.inputs[1])
+	link13 = links.new(node_math_add.outputs[0], node_bkgnd.inputs[1])#
 	link14 = links.new(node_bkgnd.outputs[0], node_ref_mix.inputs[1])
 	link15 = links.new(node_reflexion.outputs[0], node_ref_mix.inputs[2])
 	link16 = links.new(node_ref_mix.outputs[0], node_out.inputs[0])
@@ -858,6 +877,7 @@ def update_blur(self, context):
 ### CUSTOM PROPS ----------------------------------------------------
 bpy.types.Scene.orientation = bpy.props.FloatProperty(name="Orientation", update=update_orientation, max= radians(720), min= radians(-720), default=0, unit='ROTATION', step = degrees(0.017453292519943295*100))
 bpy.types.Scene.light_strength = bpy.props.FloatProperty(name="Ambient", update=update_strength, default=1.0, precision=3)
+bpy.types.Scene.vray_hdri_gamma = bpy.props.FloatProperty(name="Gamma", update=update_vray_hdri_gamma, default=1.0, precision=3)
 bpy.types.Scene.hemi_light_strength = bpy.props.FloatProperty(name="Hemi", update=update_hemi_light_strength, default=1.0, precision=3)
 bpy.types.Scene.vray_sun_synced = bpy.props.BoolProperty(name="Sync Sun & Hdri", update=update_vray_sun_synced, default = False)
 bpy.types.Scene.vray_hdri_viewport = bpy.props.BoolProperty(name="Hdri viewport", update=update_vray_hdri_viewport, default = True)
@@ -918,6 +938,7 @@ class hdri_map(bpy.types.Panel):
 			
 			row.label("", icon = 'IMAGE_COL')
 			row.prop(scene, "light_strength", text = 'Image')
+			row.prop(scene, "vray_hdri_gamma")
 
 			#row.prop(scene, "main_light_strength")
 			#row = box.row()
@@ -930,6 +951,8 @@ class hdri_map(bpy.types.Panel):
 			#row = layout.row()
 			#row.label(" ")
 			row.prop(scene, "mirror")
+			
+			
 			row = layout.row(align = True)
 			row.label("", icon = 'EYEDROPPER')
 			row.alert = True if Vray.sun_button_setmode else False
