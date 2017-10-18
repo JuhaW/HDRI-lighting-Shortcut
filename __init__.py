@@ -720,8 +720,8 @@ def setup(img_path):
 	
 	#add gamma node
 	node_gamma = nodes.new('ShaderNodeGamma')
-	node_coo.location = 400, -100
-	node_coo.name = 'Gamma'
+	node_gamma.location = 400, 100
+	node_gamma.name = 'Gamma'
 	#------------------------------------------------------	
 	node_coo = nodes.new('ShaderNodeTexCoord')
 	node_coo.location = -400, 0
